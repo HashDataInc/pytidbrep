@@ -1,0 +1,7 @@
+CHANGES
+=======
+
+* add rdb_synce sorce code
+* fix liecense and migrate bug
+* fix package scripts
+* initialize rdbsync project 1.0
