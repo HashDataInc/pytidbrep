@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-import struct
 from datetime import timedelta
+import struct
 
 from pytidbrep.expcetion import InvalidRowData
 from pytidbrep.pb_binlog.binlog_pb2 import DDL
@@ -8,6 +8,7 @@ from pytidbrep.pb_binlog.binlog_pb2 import DML
 from pytidbrep.pb_binlog.binlog_pb2 import Delete
 from pytidbrep.pb_binlog.binlog_pb2 import Insert
 from pytidbrep.pb_binlog.binlog_pb2 import Update
+from pytidbrep.pb_binlog.binlog_pb2 import column
 
 SIGNMASK = 0x8000000000000000
 
@@ -15,50 +16,97 @@ DIGITS_PER_WORD = 9  # A word holds 9 digits.
 WORD_SIZE = 4  # A word is 4 bytes int32.
 DIG2BYTES = [0, 1, 1, 2, 2, 3, 3, 4, 4, 4]
 
-TYPE_DECIMAL = 0
+TYPE_BIT = 16
 TYPE_TINY = 1
 TYPE_SHORT = 2
+TYPE_INT24 = 9
 TYPE_LONG = 3
+TYPE_LONGLONG = 8
 TYPE_FLOAT = 4
 TYPE_DOUBLE = 5
-TYPE_NULL = 6
-TYPE_TIMESTAMP = 7
-TYPE_LONGLONG = 8
-TYPE_INT24 = 9
-TYPE_DATE = 10
-TYPE_DURATION = 11
-TYPE_DATETIME = 12
-TYPE_YEAR = 13
-TYPE_NEWDATE = 14
-TYPE_VARCHAR = 15
-TYPE_BIT = 16
+TYPE_DECIMAL = 0
 TYPE_NEWDECIMAL = 0xf6
-TYPE_ENUM = 0xf7
-TYPE_SET = 0xf8
-TYPE_TINYBLOB = 0xf9
-TYPE_MEDIUMBLOB = 0xfa
-TYPE_LONGBLOB = 0xfb
-TYPE_BLOB = 0xfc
+
+TYPE_DATE = 10
+TYPE_NEWDATE = 14
+TYPE_DATETIME = 12
+TYPE_TIMESTAMP = 7
+TYPE_YEAR = 13
+TYPE_DURATION = 11
+
+TYPE_VARCHAR = 15
 TYPE_VARSTRING = 0xfd
 TYPE_STRING = 0xfe
+TYPE_TINYBLOB = 0xf9
+TYPE_BLOB = 0xfc
+TYPE_MEDIUMBLOB = 0xfa
+TYPE_LONGBLOB = 0xfb
+TYPE_ENUM = 0xf7
+TYPE_SET = 0xf8
+
+TYPE_NULL = 6
 TYPE_GEOMETRY = 0xff
+
+MYSQL_TYPE_BIT_STR = "bit"
+MYSQL_TYPE_TINYINT = "tinyint"
+MYSQL_TYPE_SMALLINT = "smallint"
+MYSQL_TYPE_MEDIUMINT = "mediumint"
+MYSQL_TYPE_INT = "int"
+MYSQL_TYPE_BIGINT = "bigint"
+MYSQL_TYPE_DECIMAL = "decimal"
+MYSQL_TYPE_FLOAT = "float"
+MYSQL_TYPE_DOUBLE = "double"
+
+MYSQL_TYPE_DATE = "date"
+MYSQL_TYPE_DATETIME = "datetime"
+MYSQL_TYPE_TIMESTAMP = "timestamp"
+MYSQL_TYPE_TIME = "time"
+MYSQL_TYPE_YEAR = "year"
+
+MYSQL_TYPE_CHAR = "char"
+MYSQL_TYPE_VARCHAR = "varchar"
+MYSQL_TYPE_BINARY = "binary"
+MYSQL_TYPE_VARBINARY = "varbinary"
+MYSQL_TYPE_TINYBLOB = "tinyblob"
+MYSQL_TYPE_TINYTEXT = "tinytext"
+MYSQL_TYPE_BLOB = "blob"
+MYSQL_TYPE_TEXT = "text"
+MYSQL_TYPE_MEDIUMBLOB = "mediumblob"
+MYSQL_TYPE_MEDIUMTEXT = "mediumtext"
+MYSQL_TYPE_LONGBLOB = "longblob"
+MYSQL_TYPE_LONGTEXT = "longtext"
+MYSQL_TYPE_ENUM = "enum"
+
+MYSQL_TYPE_GEOMETRY = "geometry"
+MYSQL_TYPE_NULL = "null"
+MYSQL_TYPE_VARSTRING = "var_string"
+MYSQL_TYPE_UNSPECIFIED = "unspecified"
 
 
 def format_column(t, v):
-    if t == TYPE_NULL:
+    _, mysql_type = t
+
+    if v is None:
         return "NULL"
-    elif t in (TYPE_VARCHAR, TYPE_VARSTRING, TYPE_STRING):
+    elif mysql_type in (MYSQL_TYPE_TINYTEXT, MYSQL_TYPE_MEDIUMTEXT,
+                        MYSQL_TYPE_LONGTEXT, MYSQL_TYPE_TEXT, MYSQL_TYPE_CHAR,
+                        MYSQL_TYPE_VARCHAR):
         return u'"%s"' % v.decode('utf-8')
-    elif t in (TYPE_TIMESTAMP, TYPE_DATE, TYPE_DURATION, TYPE_DATETIME,
-               TYPE_YEAR, TYPE_NEWDATE):
-        return '"%s"' % str(v)
-    elif t in (TYPE_TINYBLOB, TYPE_MEDIUMBLOB, TYPE_LONGBLOB, TYPE_BLOB):
-        return u'"%s"' % v.decode('utf-8')
+    elif mysql_type in (MYSQL_TYPE_BINARY, MYSQL_TYPE_VARBINARY,
+                        MYSQL_TYPE_TINYBLOB, MYSQL_TYPE_MEDIUMBLOB,
+                        MYSQL_TYPE_LONGBLOB, MYSQL_TYPE_BLOB):
+        return u'"%s"' % v.encode('hex')
+    elif mysql_type in (MYSQL_TYPE_DATE, MYSQL_TYPE_DATETIME,
+                        MYSQL_TYPE_TIMESTAMP, MYSQL_TYPE_TIME,
+                        MYSQL_TYPE_YEAR):
+        return u'"%s"' % str(v)
     else:
         return str(v)
 
+
 def int2byte(i):
     return struct.pack("!B", i)
+
 
 def read_be_uint64(buf):
     return struct.unpack(">Q", buf)[0]
@@ -168,7 +216,7 @@ class BinLogEvent(object):
 
     def __str__(self):
         return unicode(self).encode('utf-8')
-    
+
     def __unicode__(self):
         return u"%s: %s" % (self.commit_ts, self.type_name(self.tp))
 
@@ -176,11 +224,11 @@ class BinLogEvent(object):
 class DDLEvent(BinLogEvent):
     def __init__(self, binlog):
         super(DDLEvent, self).__init__(binlog)
-        self.query = binlog.ddl_query.decode('utf8')
+        self.query = binlog.ddl_query.decode('utf-8')
 
     def __str__(self):
         return unicode(self).encode('utf-8')
-    
+
     def __unicode__(self):
         return u"%s: %s" % (super(DDLEvent, self).__unicode__(), self.query)
 
@@ -218,7 +266,7 @@ class RowsEvent(BinLogEvent):
 
     def __str__(self):
         return unicode(self).encode('utf-8')
-    
+
     def __unicode__(self):
         parent = super(RowsEvent, self).__unicode__()
         return u"%s: %s %s.%s" % (parent, self.dml_type_name(self.dml_tp),
@@ -268,7 +316,7 @@ class RowsEvent(BinLogEvent):
         if size - pos < 8:
             raise InvalidRowData('insufficient bytes to decode value')
 
-        tmp = bytearray(row[pos:pos+8])
+        tmp = bytearray(row[pos:pos + 8])
         if tmp[0] & 0x80 > 0:
             tmp[0] &= 0x7F
         else:
@@ -402,100 +450,77 @@ class RowsEvent(BinLogEvent):
         return d, s
 
     @classmethod
-    def parse_one_column(cls, row, pos, size):
+    def parse_one_column(cls, value):
+        pos = 0
+        size = len(value)
+
         if size - pos < 1:
             raise InvalidRowData("Invalid encoded key")
 
-        flag = read_int8(row[pos])
+        flag = read_int8(value[pos])
         pos += 1
 
         if cls.INT_FLAG == flag:
-            v, s = cls.parse_int(row, pos, size)
+            v, _ = cls.parse_int(value, pos, size)
         elif cls.UINT_FLAG == flag:
-            v, s = cls.parse_uint(row, pos, size)
+            v, _ = cls.parse_uint(value, pos, size)
         elif cls.VARINT_FLAG == flag:
-            v, s = cls.parse_varint(row, pos, size)
+            v, _ = cls.parse_varint(value, pos, size)
         elif cls.UVARINT_FLAG == flag:
-            v, s = cls.parse_uvarint(row, pos, size)
+            v, _ = cls.parse_uvarint(value, pos, size)
         elif cls.FLOAT_FLAG == flag:
-            v, s = cls.parse_float(row, pos, size)
+            v, _ = cls.parse_float(value, pos, size)
         elif cls.BYTES_FLAG == flag:
-            v, s = cls.parse_bytes(row, pos, size)
+            v, _ = cls.parse_bytes(value, pos, size)
         elif cls.COMPACTBYTES_FLAG == flag:
-            v, s = cls.parse_compact_bytes(row, pos, size)
+            v, _ = cls.parse_compact_bytes(value, pos, size)
         elif cls.DECIMAL_FLAG == flag:
-            v, s = cls.parse_decimal(row, pos, size)
+            v, _ = cls.parse_decimal(value, pos, size)
         elif cls.DURATION_FLAG == flag:
-            v, s = cls.parse_duration(row, pos, size)
+            v, _ = cls.parse_duration(value, pos, size)
         elif cls.NIL_FLAG == flag:
             v = None
-            s = 0
         else:
             raise InvalidRowData("Invalid encoded key")
 
-        return v, s + 1
-
-    @classmethod
-    def parse_columns(cls, row):
-        size = len(row)
-        pos = 0
-        columns = []
-
-        while pos < size:
-            v, s = cls.parse_one_column(row, pos, size)
-            columns.append(v)
-            pos += s
-
-        return columns
+        return v
 
     @classmethod
     def parse_insert_and_delete_row(cls, row):
-        # For inserted and Deleted rows,
-        # we save all column values of the
-        # row[column_name, column_type, column_value, ...].
-
-        columns = cls.parse_columns(row)
-
-        if len(columns) % 3 != 0:
-            raise InvalidRowData("invalid row")
-
         values = {}
         types = {}
 
-        for i in range(0, len(columns), 3):
-            n = columns[i].decode('utf8')
-            t = read_uint8(columns[i + 1])
-            v = columns[i + 2]
+        for c in row:
+            col = column.FromString(c)
+            tp = read_uint8(col.tp)
+            mysql_type = col.mysql_type
+            name = col.name.decode('utf-8')
 
-            values[n] = v
-            types[n] = t
+            value = cls.parse_one_column(col.value)
+
+            values[name] = value
+            types[name] = (tp, mysql_type)
 
         return types, values
 
     @classmethod
     def parse_update_row(cls, row):
-        # For updated  rows,
-        # we save all old and new column values of the
-        # row[column_name, column_type, column_old_value, column_new_value,
-        # ...].
-        columns = cls.parse_columns(row)
-
-        if len(columns) % 4 != 0:
-            raise InvalidRowData("invalid row")
-
         old_values = {}
         new_values = {}
         types = {}
 
-        for i in range(0, len(columns), 4):
-            n = columns[i].decode('utf8')
-            t = read_uint8(columns[i + 1])
-            ov = columns[i + 2]
-            nv = columns[i + 3]
+        for c in row:
+            col = column.FromString(c)
+            tp = read_uint8(col.tp)
+            mysql_type = col.mysql_type
+            name = col.name.decode('utf-8')
 
-            old_values[n] = ov
-            new_values[n] = nv
-            types[n] = t
+            value = cls.parse_one_column(col.value)
+            changed_value = cls.parse_one_column(col.changed_value)
+
+            old_values[name] = value
+            new_values[name] = changed_value
+            types[name] = (tp, mysql_type)
 
         return types, old_values, new_values
 
@@ -509,21 +534,27 @@ class DeleteRowsEvent(RowsEvent):
 
     def __init__(self, binlog, event):
         super(DeleteRowsEvent, self).__init__(binlog, event)
-        self.row['types'], self.row[
-            'values'] = self.parse_insert_and_delete_row(event.row)
+        self._types, self._values = self.parse_insert_and_delete_row(event.row)
+
+    @property
+    def types(self):
+        return self._types
+
+    @property
+    def values(self):
+        return self._values
 
     def __str__(self):
         return unicode(self).encode('utf-8')
-    
+
     def __unicode__(self):
         parent = super(DeleteRowsEvent, self).__unicode__()
-        values = self.row.get('values', [])
-        types = self.row.get('types', {})
+        values = self.values
+        types = self.types
 
         s = u''
-        for column in values:
-            s += u"%s %s, " % (column,
-                               format_column(types[column], values[column]))
+        for col in values:
+            s += u"%s %s, " % (col, format_column(types[col], values[col]))
 
         return u"%s: %s" % (parent, s)
 
@@ -537,21 +568,27 @@ class WriteRowsEvent(RowsEvent):
 
     def __init__(self, binlog, event):
         super(WriteRowsEvent, self).__init__(binlog, event)
-        self.row['types'], self.row[
-            'values'] = self.parse_insert_and_delete_row(event.row)
+        self._types, self._values = self.parse_insert_and_delete_row(event.row)
+
+    @property
+    def types(self):
+        return self._types
+
+    @property
+    def values(self):
+        return self._values
 
     def __str__(self):
         return unicode(self).encode('utf-8')
-    
+
     def __unicode__(self):
         parent = super(WriteRowsEvent, self).__unicode__()
-        values = self.row.get('values', {})
-        types = self.row.get('types', {})
+        values = self.values
+        types = self.types
 
         s = u''
-        for column in values:
-            s += u"%s %s, " % (column,
-                               format_column(types[column], values[column]))
+        for col in values:
+            s += u"%s %s, " % (col, format_column(types[col], values[col]))
 
         return u"%s: %s" % (parent, s)
 
@@ -566,22 +603,34 @@ class UpdateRowsEvent(RowsEvent):
 
     def __init__(self, binlog, event):
         super(UpdateRowsEvent, self).__init__(binlog, event)
-        self.row['types'], self.row['before_values'], self.row[
-            'after_values'] = self.parse_update_row(event.row)
+        self._types, self._before_values, self._after_values = \
+            self.parse_update_row(event.row)
+
+    @property
+    def types(self):
+        return self._types
+
+    @property
+    def before_values(self):
+        return self._before_values
+
+    @property
+    def after_values(self):
+        return self._after_values
 
     def __str__(self):
         return unicode(self).encode('utf-8')
-    
+
     def __unicode__(self):
         parent = super(UpdateRowsEvent, self).__unicode__()
-        before_values = self.row.get('before_values', [])
-        after_values = self.row.get('after_values', [])
-        types = self.row.get('types')
+        before_values = self.before_values
+        after_values = self.after_values
+        types = self.types
 
         s = u''
-        for column in before_values:
+        for col in before_values:
             s += u"%s %s => %s, " % (
-                column, format_column(types[column], before_values[column]),
-                format_column(types[column], after_values[column]))
+                col, format_column(types[col], before_values[col]),
+                format_column(types[col], after_values[col]))
 
         return u"%s: %s" % (parent, s)

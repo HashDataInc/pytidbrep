@@ -3,7 +3,4 @@
 # process, which may cause wedges in the gate later.
 
 pbr>=1.6 # Apache-2.0
-
-pymysql==0.7.10
-mysql-replication==0.11
-psycopg2==2.5.5
+protobuf==3.2.0

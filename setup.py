@@ -12,10 +12,10 @@ try:
 except ImportError:
     pass
 
-version = packaging.get_version('binlogsync')
+version = packaging.get_version('pytidbrep')
 BASE_DIR = path.dirname(path.abspath(__file__))
 
-with open(path.join(BASE_DIR, 'binlogsync', 'version.py'), 'w') as f:
+with open(path.join(BASE_DIR, 'pytidbrep', 'version.py'), 'w') as f:
     f.write('VERSION="%s"\n' % version)
 
 setuptools.setup(

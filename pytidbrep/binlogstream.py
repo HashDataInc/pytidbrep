@@ -13,6 +13,7 @@ from pytidbrep.event import UpdateRowsEvent
 from pytidbrep.event import WriteRowsEvent
 from pytidbrep.expcetion import CrcNotMatcheError
 from pytidbrep.expcetion import EofError
+from pytidbrep.expcetion import InvalidRowData
 from pytidbrep.expcetion import MagicNotMatchError
 from pytidbrep.expcetion import UnexpectedEofError
 from pytidbrep.expcetion import UnknownBinlogType
@@ -38,18 +39,28 @@ class BinLogStreamReader(object):
                  binlog_start=None,
                  blocking=False,
                  skip_to_timestamp=None,
-                 ignore_error = False):
+                 ignore_error=False):
         self._binlog_dir = binlog_dir
         self._current_binlog_file = None
         self._current_binlog_file_name = None
+        self._current_binlog_file_position = 0
         self._skip_to_timestamp = skip_to_timestamp
         self._blocking = blocking
         self._ignore_error = ignore_error
         self._current_events = []
+        self._current_event_timestamp = 0
 
         if binlog_start:
             self._current_binlog_file = self._get_next_binlog_file(
                 binlog_start)
+
+    @property
+    def current_binlog_file_name(self):
+        return self._current_binlog_file_name
+
+    @property
+    def current_event_timestamp(self):
+        return self._current_event_timestamp
 
     def read_fully(self, size):
         b = ''
@@ -78,6 +89,8 @@ class BinLogStreamReader(object):
                             self._current_binlog_file_name)
                 else:
                     if self._blocking:
+                        self._current_binlog_file.seek(
+                            self._current_binlog_file_position)
                         time.sleep(1)
                     elif s == size:
                         raise EofError('End of binlog file "%s"' %
@@ -89,8 +102,10 @@ class BinLogStreamReader(object):
 
                 continue
 
-            s -= len(d)
+            l = len(d)
+            s -= l
             b += d
+            self._current_binlog_file_position += l
 
         return b
 
@@ -123,6 +138,7 @@ class BinLogStreamReader(object):
         if start_file:
             binlogs.index(start_file)
             self._current_binlog_file_name = start_file
+            self._current_binlog_file_position = 0
             return open(
                 os.path.join(self._binlog_dir, self._current_binlog_file_name),
                 'rb')
@@ -133,6 +149,7 @@ class BinLogStreamReader(object):
         # start with the first file in the directory
         if not self._current_binlog_file_name:
             self._current_binlog_file_name = binlogs[0]
+            self._current_binlog_file_position = 0
             return open(
                 os.path.join(self._binlog_dir, self._current_binlog_file_name),
                 'rb')
@@ -141,7 +158,8 @@ class BinLogStreamReader(object):
         index = binlogs.index(self._current_binlog_file_name)
 
         if index + 1 < len(binlogs):
-            self._current_binlog_file = binlogs[index + 1]
+            self._current_binlog_file_name = binlogs[index + 1]
+            self._current_binlog_file_position = 0
             return open(
                 os.path.join(self._binlog_dir, self._current_binlog_file_name),
                 'rb')
@@ -189,25 +207,29 @@ class BinLogStreamReader(object):
             payload = self._read_payload()
 
             if not payload:
-                raise StopIteration
+                return None
 
             try:
                 binlog = Binlog.FromString(payload)
-    
+
+                self._current_event_timestamp = binlog.commit_ts
+
                 if self._skip_to_timestamp and \
                    binlog.commit_ts < self._skip_to_timestamp:
                     continue
-    
+
                 if binlog.tp == DML:
                     self._decode_DML(binlog)
                     continue
                 elif binlog.tp == DDL:
                     return DDLEvent(binlog)
                 else:
-                    raise UnknownBinlogType('unknown binlog type %s' % binlog.tp)
-            except Exception as e:
+                    raise UnknownBinlogType(
+                        'unknown binlog type %s' % binlog.tp)
+            except InvalidRowData:
                 if self._ignore_error:
-                    LOG.warning('Ignore invalid binlog entry at ts: %s' % binlog.commit_ts)
+                    LOG.warning('Ignore invalid binlog entry at ts: %s' %
+                                binlog.commit_ts)
                 else:
                     raise
 
@@ -218,6 +240,9 @@ class BinLogStreamReader(object):
 if __name__ == "__main__":
     logging.basicConfig()
     stream = BinLogStreamReader(
-        '/hashdata/mysql2pgsql/pytidbrep/data/data/drainer', skip_to_timestamp=390997282615197697,ignore_error=True)
+        '/hashdata/mysql2pgsql/pytidbrep/data/data/drainer',
+        skip_to_timestamp=0,
+        ignore_error=True,
+        blocking=False)
     for event in stream:
         print event
