@@ -32,21 +32,6 @@ https://groups.google.com/forum/#!forum/tidb-user
 
 
 
-Project status
-================
-
-The project is test with:
-* Tidb 5.5, 5.6 and 5.7
-* Python >= 2.6
-* Python 3.3 and 3.4 (3.2 is not supported)
-* PyPy (really faster than the standard Python interpreter)
-
-The project is used in production for critical stuff in some
-medium internet corporations. But all use case as not
-been perfectly test in the real world.
-
-
-
 Examples
 =========
 
