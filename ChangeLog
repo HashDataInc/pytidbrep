@@ -1,5 +1,7 @@
 CHANGES
 =======
 
+* add XidEvent; fix unicode issue
+* Change readme and change log
 * Refactor code
 * first implementation
