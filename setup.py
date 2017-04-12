@@ -1,6 +1,3 @@
-from os import path
-
-from pbr import packaging
 import setuptools
 
 
@@ -11,12 +8,6 @@ try:
     import multiprocessing
 except ImportError:
     pass
-
-version = packaging.get_version('pytidbrep')
-BASE_DIR = path.dirname(path.abspath(__file__))
-
-with open(path.join(BASE_DIR, 'pytidbrep', 'version.py'), 'w') as f:
-    f.write('VERSION="%s"\n' % version)
 
 setuptools.setup(
     setup_requires=['pbr>=1.8'],
