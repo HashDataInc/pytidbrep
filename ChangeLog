@@ -1,7 +1,18 @@
 CHANGES
 =======
 
+* do not generate version.py
+
+1.0.0rc2
+--------
+
+* fix pip install command
+* add build status
+* add travis
+* improve README
+* update changes
 * add XidEvent; fix unicode issue
 * Change readme and change log
 * Refactor code
 * first implementation
+* Initial commit
