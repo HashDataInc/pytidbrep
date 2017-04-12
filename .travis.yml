@@ -1,0 +1,21 @@
+language: python
+python: '2.7'
+env:
+- TOXENV=pep8
+- TOXENV=pylint
+- TOXENV=py27
+- TOXENV=cover
+install:
+- pip install tox pbr
+script:
+- tox
+deploy:
+  provider: pypi
+  user: hashdata
+  distributions: sdist
+  password:
+    secure: Umw/I5C+vi7CoK3Qx5WJ75Y9YdkWT/eeaYxfeJfYTg9jb0UQyNfgHZWiOI37IQpx4wEGo6vEwM1pVDRSJgiD3e4bcH314lZqvdkyZsnK+g4lpx1oZmZbYT/h8dZBCmJ3wgemdrl8hYGfGTkVKbVfEzV3MPGdc+ul84otBhGp6ysTVzqLC+SWOUbLhT30Oq6+ok5sw4FkOgtA4KVbuSWI3XCv39Oj1huD1InxX/puiV5EaqcyA8JzVjADhGUlMKd4lQQHWfDPijFh9w+tDWMIM5SSiDKNVZyJwb3jqnp+PNdbOb2DP7pZBWx3VcUGRIk6EA0Rfk/KZKo6iIXxQXeAov40VNmeFFE4Z1PKRXOx9LFz7dWeiG5EAnkJg3TVnqVVMdvQ0LLtjW842QTZB6FSfWjUDRrzhBHzbo6O1OMuwH/hr46JZ9CBYHsHu68ZpMiZZMz4U+YqfMwPBzGScm737fZN34XUpx803G4agEQGByxbofGpH6CLXLxizXO1NCOEcAXw6caZUiywyA/0acbCRw+dZsRqOlVCvOHqeWFOU+90R8e1wgFfi80MFd4ysz20U/lV0tmUrqZIrbChT6pxY7bANiBcSMfLV7c2WkbhZSwMjk3wXuWK6T6UIen1hNwBdscpxsOGqNF0iJ0poS74aFyFDBKw0WFSw71RxK9idSg=
+  on:
+    tags: true
+    repo: HashDataInc/pytidbrep
+    condition: $TOXENV = py27
