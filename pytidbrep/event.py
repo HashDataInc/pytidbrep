@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from __future__ import unicode_literals
+
 from datetime import timedelta
 import struct
 
@@ -83,6 +85,13 @@ MYSQL_TYPE_VARSTRING = "var_string"
 MYSQL_TYPE_UNSPECIFIED = "unspecified"
 
 
+def get_unicode(s):
+    if isinstance(s, unicode):
+        return s
+    else:
+        return s.decode('utf8')
+
+
 def format_column(t, v):
     _, mysql_type = t
 
@@ -91,15 +100,15 @@ def format_column(t, v):
     elif mysql_type in (MYSQL_TYPE_TINYTEXT, MYSQL_TYPE_MEDIUMTEXT,
                         MYSQL_TYPE_LONGTEXT, MYSQL_TYPE_TEXT, MYSQL_TYPE_CHAR,
                         MYSQL_TYPE_VARCHAR):
-        return u'"%s"' % v.decode('utf-8')
+        return '"%s"' % v
     elif mysql_type in (MYSQL_TYPE_BINARY, MYSQL_TYPE_VARBINARY,
                         MYSQL_TYPE_TINYBLOB, MYSQL_TYPE_MEDIUMBLOB,
                         MYSQL_TYPE_LONGBLOB, MYSQL_TYPE_BLOB):
-        return u'"%s"' % v.encode('hex')
+        return '"%s"' % v.encode('hex')
     elif mysql_type in (MYSQL_TYPE_DATE, MYSQL_TYPE_DATETIME,
                         MYSQL_TYPE_TIMESTAMP, MYSQL_TYPE_TIME,
                         MYSQL_TYPE_YEAR):
-        return u'"%s"' % str(v)
+        return '"%s"' % str(v)
     else:
         return str(v)
 
@@ -218,19 +227,41 @@ class BinLogEvent(object):
         return unicode(self).encode('utf-8')
 
     def __unicode__(self):
-        return u"%s: %s" % (self.commit_ts, self.type_name(self.tp))
+        return "%s: %s" % (self.commit_ts, self.type_name(self.tp))
 
 
 class DDLEvent(BinLogEvent):
     def __init__(self, binlog):
         super(DDLEvent, self).__init__(binlog)
-        self.query = binlog.ddl_query.decode('utf-8')
+        self._statement = get_unicode(binlog.ddl_query)
+
+    @property
+    def statement(self):
+        '''Return DDL statement
+
+        @return: A unicode string of DDL statement
+        '''
+        return self._statement
 
     def __str__(self):
         return unicode(self).encode('utf-8')
 
     def __unicode__(self):
-        return u"%s: %s" % (super(DDLEvent, self).__unicode__(), self.query)
+        return "%s: %s" % (super(DDLEvent, self).__unicode__(), self.statement)
+
+
+class XidEvent(BinLogEvent):
+    """A COMMIT event
+    """
+
+    def __init__(self, ts):
+        self.commit_ts = ts
+
+    def __str__(self):
+        return unicode(self).encode('utf-8')
+
+    def __unicode__(self):
+        return "Transaction at: %s" % (self.commit_ts)
 
 
 class RowsEvent(BinLogEvent):
@@ -248,10 +279,25 @@ class RowsEvent(BinLogEvent):
 
     def __init__(self, binlog, event):
         super(RowsEvent, self).__init__(binlog)
-        self.schema = event.schema_name
-        self.table = event.table_name
-        self.dml_tp = event.tp
-        self.row = {}
+        self._schema = get_unicode(event.schema_name)
+        self._table = get_unicode(event.table_name)
+        self._dml_tp = event.tp
+
+    @property
+    def schema(self):
+        '''Return table's schema name of the event
+
+        @return: A unicode string of schema
+        '''
+        return self._schema
+
+    @property
+    def table(self):
+        '''Return table's name of the event
+
+        @return: A unicode string of table name
+        '''
+        return self._table
 
     @classmethod
     def dml_type_name(cls, tp):
@@ -269,8 +315,8 @@ class RowsEvent(BinLogEvent):
 
     def __unicode__(self):
         parent = super(RowsEvent, self).__unicode__()
-        return u"%s: %s %s.%s" % (parent, self.dml_type_name(self.dml_tp),
-                                  self.schema, self.table)
+        return "%s: %s %s.%s" % (parent, self.dml_type_name(self._dml_tp),
+                                 self.schema, self.table)
 
     @classmethod
     def parse_int(cls, row, pos, size):
@@ -494,9 +540,20 @@ class RowsEvent(BinLogEvent):
             col = column.FromString(c)
             tp = read_uint8(col.tp)
             mysql_type = col.mysql_type
-            name = col.name.decode('utf-8')
+            name = get_unicode(col.name)
 
             value = cls.parse_one_column(col.value)
+
+            if value is not None and \
+                    mysql_type in (
+                        MYSQL_TYPE_TINYTEXT,
+                        MYSQL_TYPE_MEDIUMTEXT,
+                        MYSQL_TYPE_LONGTEXT,
+                        MYSQL_TYPE_TEXT,
+                        MYSQL_TYPE_CHAR,
+                        MYSQL_TYPE_VARCHAR
+                    ):
+                value = value.decode('utf-8')
 
             values[name] = value
             types[name] = (tp, mysql_type)
@@ -513,7 +570,7 @@ class RowsEvent(BinLogEvent):
             col = column.FromString(c)
             tp = read_uint8(col.tp)
             mysql_type = col.mysql_type
-            name = col.name.decode('utf-8')
+            name = unicode(col.name)
 
             value = cls.parse_one_column(col.value)
             changed_value = cls.parse_one_column(col.changed_value)
@@ -552,11 +609,11 @@ class DeleteRowsEvent(RowsEvent):
         values = self.values
         types = self.types
 
-        s = u''
+        s = ''
         for col in values:
-            s += u"%s %s, " % (col, format_column(types[col], values[col]))
+            s += "%s %s, " % (col, format_column(types[col], values[col]))
 
-        return u"%s: %s" % (parent, s)
+        return "%s: %s" % (parent, s)
 
 
 class WriteRowsEvent(RowsEvent):
@@ -586,11 +643,11 @@ class WriteRowsEvent(RowsEvent):
         values = self.values
         types = self.types
 
-        s = u''
+        s = ''
         for col in values:
-            s += u"%s %s, " % (col, format_column(types[col], values[col]))
+            s += "%s %s, " % (col, format_column(types[col], values[col]))
 
-        return u"%s: %s" % (parent, s)
+        return "%s: %s" % (parent, s)
 
 
 class UpdateRowsEvent(RowsEvent):
@@ -627,10 +684,10 @@ class UpdateRowsEvent(RowsEvent):
         after_values = self.after_values
         types = self.types
 
-        s = u''
+        s = ''
         for col in before_values:
-            s += u"%s %s => %s, " % (
+            s += "%s %s => %s, " % (
                 col, format_column(types[col], before_values[col]),
                 format_column(types[col], after_values[col]))
 
-        return u"%s: %s" % (parent, s)
+        return "%s: %s" % (parent, s)

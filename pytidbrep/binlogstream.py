@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import unicode_literals
 
 import logging
 import os
@@ -11,6 +12,7 @@ from pytidbrep.event import DDLEvent
 from pytidbrep.event import DeleteRowsEvent
 from pytidbrep.event import UpdateRowsEvent
 from pytidbrep.event import WriteRowsEvent
+from pytidbrep.event import XidEvent
 from pytidbrep.expcetion import CrcNotMatcheError
 from pytidbrep.expcetion import EofError
 from pytidbrep.expcetion import InvalidRowData
@@ -48,7 +50,6 @@ class BinLogStreamReader(object):
         self._blocking = blocking
         self._ignore_error = ignore_error
         self._current_events = []
-        self._current_event_timestamp = 0
 
         if binlog_start:
             self._current_binlog_file = self._get_next_binlog_file(
@@ -58,12 +59,8 @@ class BinLogStreamReader(object):
     def current_binlog_file_name(self):
         return self._current_binlog_file_name
 
-    @property
-    def current_event_timestamp(self):
-        return self._current_event_timestamp
-
-    def read_fully(self, size):
-        b = ''
+    def _read_fully(self, size):
+        b = b''
         s = size
 
         while s > 0:
@@ -109,16 +106,16 @@ class BinLogStreamReader(object):
 
         return b
 
-    def read_le_int32(self):
-        b = self.read_fully(4)
+    def _read_le_int32(self):
+        b = self._read_fully(4)
         return struct.unpack("<i", b)[0]
 
-    def read_le_uint32(self):
-        b = self.read_fully(4)
+    def _read_le_uint32(self):
+        b = self._read_fully(4)
         return struct.unpack("<I", b)[0]
 
-    def read_le_int64(self):
-        b = self.read_fully(8)
+    def _read_le_int64(self):
+        b = self._read_fully(8)
         return struct.unpack("<q", b)[0]
 
     def _get_next_binlog_file(self, start_file=None):
@@ -168,7 +165,7 @@ class BinLogStreamReader(object):
 
     def _read_payload(self):
         try:
-            magic = self.read_le_int32()
+            magic = self._read_le_int32()
         except EofError:
             return None
 
@@ -176,9 +173,9 @@ class BinLogStreamReader(object):
             raise MagicNotMatchError(
                 '%s is not a valid binlog file: Magic not match')
 
-        size = self.read_le_int64()
-        payload = self.read_fully(size)
-        crc = self.read_le_uint32()
+        size = self._read_le_int64()
+        payload = self._read_fully(size)
+        crc = self._read_le_uint32()
 
         if crc != crc32c(payload):
             raise CrcNotMatcheError('CRC32 does not match in file "%s"' %
@@ -199,6 +196,8 @@ class BinLogStreamReader(object):
             else:
                 raise UnknownDMLType("Unknown DML type: %s" % event.tp)
 
+        self._current_events.append(XidEvent(binlog.commit_ts))
+
     def fetchone(self):
         while True:
             if self._current_events:
@@ -212,8 +211,6 @@ class BinLogStreamReader(object):
             try:
                 binlog = Binlog.FromString(payload)
 
-                self._current_event_timestamp = binlog.commit_ts
-
                 if self._skip_to_timestamp and \
                    binlog.commit_ts < self._skip_to_timestamp:
                     continue
@@ -222,7 +219,9 @@ class BinLogStreamReader(object):
                     self._decode_DML(binlog)
                     continue
                 elif binlog.tp == DDL:
-                    return DDLEvent(binlog)
+                    self._current_events.append(DDLEvent(binlog))
+                    self._current_events.append(XidEvent(binlog.commit_ts))
+                    continue
                 else:
                     raise UnknownBinlogType(
                         'unknown binlog type %s' % binlog.tp)
@@ -236,11 +235,14 @@ class BinLogStreamReader(object):
     def __iter__(self):
         return iter(self.fetchone, None)
 
+    def close(self):
+        self._current_binlog_file.close()
+
 
 if __name__ == "__main__":
     logging.basicConfig()
     stream = BinLogStreamReader(
-        '/hashdata/mysql2pgsql/pytidbrep/data/data/drainer',
+        '/hashdata/pytidbrep/data/data/drainer',
         skip_to_timestamp=0,
         ignore_error=True,
         blocking=False)
