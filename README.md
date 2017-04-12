@@ -78,7 +78,7 @@ use `tox` to run unit tests
 
 Changelog
 ==========
-TODO
+[ChangeLog](https://github.com/HashDataInc/pytidbrep/blob/master/ChangeLog)
 
 
 Contributors
@@ -86,7 +86,7 @@ Contributors
 
 Major contributor:
 
-* Zhanwei Wang author https://github.com/wangzw
+* [Zhanwei Wang](https://github.com/wangzw)
 
 
 Licence
