@@ -1,6 +1,8 @@
 python-tidb-replication
 ========================
 
+[![Build Status](https://travis-ci.org/HashDataInc/pytidbrep.svg?branch=master)](https://travis-ci.org/HashDataInc/pytidbrep)
+
 Pure Python Implementation of Tidb replication protocol. This allow you to receive event like insert, update, delete with their datas and raw SQL queries.
 
 Use cases
