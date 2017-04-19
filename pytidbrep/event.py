@@ -117,7 +117,7 @@ def format_column(t, v):
     elif mysql_type in (MYSQL_TYPE_TINYTEXT, MYSQL_TYPE_MEDIUMTEXT,
                         MYSQL_TYPE_LONGTEXT, MYSQL_TYPE_TEXT, MYSQL_TYPE_CHAR,
                         MYSQL_TYPE_VARCHAR):
-        return '"%s"' % v
+        return '"%s"' % get_unicode(v)
     elif mysql_type in (MYSQL_TYPE_BINARY, MYSQL_TYPE_VARBINARY,
                         MYSQL_TYPE_TINYBLOB, MYSQL_TYPE_MEDIUMBLOB,
                         MYSQL_TYPE_LONGBLOB, MYSQL_TYPE_BLOB):
@@ -131,19 +131,19 @@ def format_column(t, v):
 
 
 def int2byte(i):
-    return struct.pack("!B", i)
+    return struct.pack(b"!B", i)
 
 
 def read_be_uint64(buf):
-    return struct.unpack(">Q", buf)[0]
+    return struct.unpack(b">Q", buf)[0]
 
 
 def read_int8(buf):
-    return struct.unpack(">b", buf)[0]
+    return struct.unpack(b">b", buf)[0]
 
 
 def read_uint8(buf):
-    return struct.unpack(">B", buf)[0]
+    return struct.unpack(b">B", buf)[0]
 
 
 def read_uvarint(buf):
@@ -211,7 +211,7 @@ def read_int32_word(buf, size):
     for i in range(offset, WORD_SIZE):
         tmp[i] = buf[i - offset]
 
-    x = struct.unpack(">i", str(tmp))[0]
+    x = struct.unpack(b">i", str(tmp))[0]
 
     return x
 
@@ -383,11 +383,11 @@ class RowsEvent(BinLogEvent):
         if tmp[0] & 0x80 > 0:
             tmp[0] &= 0x7F
         else:
-            u = struct.unpack(">Q", str(tmp))[0]
+            u = struct.unpack(b">Q", str(tmp))[0]
             u = ~u
-            tmp = struct.pack(">q", u)
+            tmp = struct.pack(b">q", u)
 
-        v = struct.unpack(">d", str(tmp))[0]
+        v = struct.unpack(b">d", str(tmp))[0]
         return v, 8
 
     @classmethod

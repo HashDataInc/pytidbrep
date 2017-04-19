@@ -125,15 +125,15 @@ class BinLogStreamReader(object):
 
     def _read_le_int32(self):
         b = self._read_fully(4)
-        return struct.unpack("<i", b)[0]
+        return struct.unpack(b"<i", b)[0]
 
     def _read_le_uint32(self):
         b = self._read_fully(4)
-        return struct.unpack("<I", b)[0]
+        return struct.unpack(b"<I", b)[0]
 
     def _read_le_int64(self):
         b = self._read_fully(8)
-        return struct.unpack("<q", b)[0]
+        return struct.unpack(b"<q", b)[0]
 
     def _get_next_binlog_file(self, start_file=None):
         if not os.path.exists(self._binlog_dir):
