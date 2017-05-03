@@ -102,9 +102,10 @@ class BinLogStreamReader(object):
                             'Unexpected end of binlog file "%s"' %
                             self._current_binlog_file_name)
                 else:
+                    self._current_binlog_file.seek(
+                        self._current_binlog_file_position)
+
                     if self._blocking:
-                        self._current_binlog_file.seek(
-                            self._current_binlog_file_position)
                         time.sleep(1)
                     elif s == size:
                         raise EofError('End of binlog file "%s"' %
