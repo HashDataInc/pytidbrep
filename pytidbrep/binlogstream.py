@@ -18,6 +18,7 @@
 
 from __future__ import unicode_literals
 
+from collections import deque
 import logging
 import os
 import re
@@ -44,6 +45,7 @@ from pytidbrep.pb_binlog.binlog_pb2 import Delete
 from pytidbrep.pb_binlog.binlog_pb2 import Insert
 from pytidbrep.pb_binlog.binlog_pb2 import Update
 
+
 LOG = logging.getLogger(__name__)
 
 
@@ -63,10 +65,11 @@ class BinLogStreamReader(object):
         self._current_binlog_file = None
         self._current_binlog_file_name = None
         self._current_binlog_file_position = 0
-        self._skip_to_timestamp = long(skip_to_timestamp)
+        self._skip_to_timestamp = None if skip_to_timestamp is None else \
+            long(skip_to_timestamp)
         self._blocking = blocking
         self._ignore_error = ignore_error
-        self._current_events = []
+        self._current_events = None
         self._partial_data = b''
         self._magic = None
         self._payload_size = None
@@ -188,7 +191,7 @@ class BinLogStreamReader(object):
         else:
             return None
 
-    def _read_payload(self):
+    def read_payload(self):
         try:
             if self._magic is None:
                 self._magic = self._read_le_int32()
@@ -221,52 +224,59 @@ class BinLogStreamReader(object):
 
     def _decode_DML(self, binlog):
         data = binlog.dml_data
+        events = []
 
         for event in data.events:
             if event.tp == Insert:
-                self._current_events.append(WriteRowsEvent(binlog, event))
+                events.append(WriteRowsEvent(binlog, event))
             elif event.tp == Update:
-                self._current_events.append(UpdateRowsEvent(binlog, event))
+                events.append(UpdateRowsEvent(binlog, event))
             elif event.tp == Delete:
-                self._current_events.append(DeleteRowsEvent(binlog, event))
+                events.append(DeleteRowsEvent(binlog, event))
             else:
                 raise UnknownDMLType("Unknown DML type: %s" % event.tp)
 
-        self._current_events.append(XidEvent(binlog.commit_ts))
+        events.append(XidEvent(binlog.commit_ts))
+        return event
+
+    def parse_payload(self, payload):
+        try:
+            binlog = Binlog.FromString(payload)
+
+            if self._skip_to_timestamp and \
+               binlog.commit_ts < self._skip_to_timestamp:
+                return None
+
+            if binlog.tp == DML:
+                return self._decode_DML(binlog)
+            elif binlog.tp == DDL:
+                events = []
+                events.append(DDLEvent(binlog))
+                events.append(XidEvent(binlog.commit_ts))
+                return events
+            else:
+                raise UnknownBinlogType(
+                    'unknown binlog type %s' % binlog.tp)
+        except InvalidRowData:
+            if self._ignore_error:
+                LOG.warning('Ignore invalid binlog entry at ts: %s' %
+                            binlog.commit_ts)
+                return None
+            else:
+                raise
 
     def fetchone(self):
         while True:
             if self._current_events:
-                return self._current_events.pop(0)
+                return self._current_events.popleft()
 
-            payload = self._read_payload()
+            payload = self.read_payload()
 
             if not payload:
                 return None
 
-            try:
-                binlog = Binlog.FromString(payload)
-
-                if self._skip_to_timestamp and \
-                   binlog.commit_ts < self._skip_to_timestamp:
-                    continue
-
-                if binlog.tp == DML:
-                    self._decode_DML(binlog)
-                    continue
-                elif binlog.tp == DDL:
-                    self._current_events.append(DDLEvent(binlog))
-                    self._current_events.append(XidEvent(binlog.commit_ts))
-                    continue
-                else:
-                    raise UnknownBinlogType(
-                        'unknown binlog type %s' % binlog.tp)
-            except InvalidRowData:
-                if self._ignore_error:
-                    LOG.warning('Ignore invalid binlog entry at ts: %s' %
-                                binlog.commit_ts)
-                else:
-                    raise
+            events = self.parse_payload(payload)
+            self._current_events = deque(events)
 
     def __iter__(self):
         return iter(self.fetchone, None)
