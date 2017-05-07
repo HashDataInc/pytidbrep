@@ -222,7 +222,8 @@ class BinLogStreamReader(object):
 
         return payload
 
-    def _decode_DML(self, binlog):
+    @classmethod
+    def _decode_DML(cls, binlog):
         data = binlog.dml_data
         events = []
 
@@ -237,18 +238,20 @@ class BinLogStreamReader(object):
                 raise UnknownDMLType("Unknown DML type: %s" % event.tp)
 
         events.append(XidEvent(binlog.commit_ts))
-        return event
+        return events
 
-    def parse_payload(self, payload):
+    @classmethod
+    def parse_payload(cls, payload, skip_to_timestamp=None,
+                      ignore_error=None):
         try:
             binlog = Binlog.FromString(payload)
 
-            if self._skip_to_timestamp and \
-               binlog.commit_ts < self._skip_to_timestamp:
+            if skip_to_timestamp and \
+               binlog.commit_ts < skip_to_timestamp:
                 return None
 
             if binlog.tp == DML:
-                return self._decode_DML(binlog)
+                return cls._decode_DML(binlog)
             elif binlog.tp == DDL:
                 events = []
                 events.append(DDLEvent(binlog))
@@ -258,7 +261,7 @@ class BinLogStreamReader(object):
                 raise UnknownBinlogType(
                     'unknown binlog type %s' % binlog.tp)
         except InvalidRowData:
-            if self._ignore_error:
+            if ignore_error:
                 LOG.warning('Ignore invalid binlog entry at ts: %s' %
                             binlog.commit_ts)
                 return None
@@ -275,7 +278,8 @@ class BinLogStreamReader(object):
             if not payload:
                 return None
 
-            events = self.parse_payload(payload)
+            events = self.parse_payload(
+                payload, self._skip_to_timestamp, self._ignore_error)
             self._current_events = deque(events)
 
     def __iter__(self):
