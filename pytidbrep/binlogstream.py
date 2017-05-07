@@ -67,6 +67,10 @@ class BinLogStreamReader(object):
         self._blocking = blocking
         self._ignore_error = ignore_error
         self._current_events = []
+        self._partial_data = b''
+        self._magic = None
+        self._payload_size = None
+        self._payload = None
 
         if binlog_start:
             self._current_binlog_file = self._get_next_binlog_file(
@@ -77,8 +81,10 @@ class BinLogStreamReader(object):
         return self._current_binlog_file_name
 
     def _read_fully(self, size):
-        b = b''
-        s = size
+        b = self._partial_data
+        self._partial_data = b''
+        s = size - len(b)
+        assert s > 0
 
         while s > 0:
             if self._current_binlog_file:
@@ -111,9 +117,10 @@ class BinLogStreamReader(object):
                         raise EofError('End of binlog file "%s"' %
                                        self._current_binlog_file_name)
                     else:
-                        raise UnexpectedEofError(
-                            'Unexpected end of binlog file "%s"' %
-                            self._current_binlog_file_name)
+                        # 'Unexpected end of binlog file, cache partial data'
+                        self._partial_data = b
+                        raise EofError('End of binlog file "%s"' %
+                                       self._current_binlog_file_name)
 
                 continue
 
@@ -183,21 +190,32 @@ class BinLogStreamReader(object):
 
     def _read_payload(self):
         try:
-            magic = self._read_le_int32()
+            if self._magic is None:
+                self._magic = self._read_le_int32()
+
+            if self._magic != self.binlog_magic:
+                raise MagicNotMatchError(
+                    '%s is not a valid binlog file: Magic not match')
+
+            if self._payload_size is None:
+                self._payload_size = self._read_le_int64()
+
+            if self._payload is None:
+                self._payload = self._read_fully(self._payload_size)
+
+            crc = self._read_le_uint32()
+
         except EofError:
             return None
 
-        if magic != self.binlog_magic:
-            raise MagicNotMatchError(
-                '%s is not a valid binlog file: Magic not match')
-
-        size = self._read_le_int64()
-        payload = self._read_fully(size)
-        crc = self._read_le_uint32()
-
-        if crc != crc32c(payload):
+        if crc != crc32c(self._payload):
             raise CrcNotMatcheError('CRC32 does not match in file "%s"' %
                                     self._current_binlog_file_name)
+
+        payload = self._payload
+        self._magic = None
+        self._payload_size = None
+        self._payload = None
 
         return payload
 
