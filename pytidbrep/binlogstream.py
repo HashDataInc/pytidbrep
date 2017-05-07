@@ -211,16 +211,12 @@ class BinLogStreamReader(object):
         except EofError:
             return None
 
-        if crc != crc32c(self._payload):
-            raise CrcNotMatcheError('CRC32 does not match in file "%s"' %
-                                    self._current_binlog_file_name)
-
         payload = self._payload
         self._magic = None
         self._payload_size = None
         self._payload = None
 
-        return payload
+        return (payload, crc)
 
     @classmethod
     def _decode_DML(cls, binlog):
@@ -241,9 +237,12 @@ class BinLogStreamReader(object):
         return events
 
     @classmethod
-    def parse_payload(cls, payload, skip_to_timestamp=None,
+    def parse_payload(cls, payload, crc, skip_to_timestamp=None,
                       ignore_error=None):
         try:
+            if crc != crc32c(payload):
+                raise CrcNotMatcheError('payload CRC32 does not match.')
+
             binlog = Binlog.FromString(payload)
 
             if skip_to_timestamp and \
