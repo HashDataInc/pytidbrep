@@ -240,7 +240,7 @@ class BinLogStreamReader(object):
     def parse_payload(cls, payload, crc, skip_to_timestamp=None,
                       ignore_error=None):
         try:
-            if crc != crc32c(payload):
+            if crc is not None and crc != crc32c(payload):
                 raise CrcNotMatcheError('payload CRC32 does not match.')
 
             binlog = Binlog.FromString(payload)
